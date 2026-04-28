@@ -1,13 +1,13 @@
 # 🔓 RDE Props Interact — Stash & Crafting Layer
 
-[![Version](https://img.shields.io/badge/version-1.0.1-red?style=for-the-badge&logo=github)](https://github.com/RedDragonElite/rde_props_interact)
+[![Version](https://img.shields.io/badge/version-1.0.5-red?style=for-the-badge&logo=github)](https://github.com/RedDragonElite/rde_props_interact)
 [![License](https://img.shields.io/badge/license-RDE%20Black%20Flag%20v6.66-black?style=for-the-badge)](LICENSE)
 [![FiveM](https://img.shields.io/badge/FiveM-Compatible-orange?style=for-the-badge)](https://fivem.net)
 [![ox_core](https://img.shields.io/badge/ox__core-Required-blue?style=for-the-badge)](https://github.com/communityox/ox_core)
 [![Requires](https://img.shields.io/badge/requires-rde__props-red?style=for-the-badge)](https://github.com/RedDragonElite/rde_props)
 [![Free](https://img.shields.io/badge/price-FREE%20FOREVER-brightgreen?style=for-the-badge)](https://github.com/RedDragonElite/rde_props_interact)
 
-**Turn any rde_props prop into a lockable stash or crafting station — with crack mechanics, passcode locks, and full recipe systems.**  
+**Turn any rde_props prop into a lockable stash or crafting station — with crack mechanics, passcode locks, minigame skillchecks, and full recipe systems.**  
 Zero core modifications. Drop-in. Drop-out. Free forever.
 
 *Built by [Red Dragon Elite](https://rd-elite.com) | SerpentsByte*
@@ -49,13 +49,14 @@ No other prop system on the market does this natively for ox_core. **Free. Open.
 |---|---|---|
 | Stash any prop | ❌ | ✅ |
 | Lock types (Owner/Job/Group/Code) | ❌ | ✅ |
-| Crack mechanics + skillcheck | ❌ | ✅ |
+| Crack mechanics + minigame skillchecks | ❌ | ✅ |
 | Crafting station on any prop | ❌ | ✅ |
 | Hybrid auto-config + manual | ❌ | ✅ |
 | Separate DB (no core changes) | ❌ | ✅ |
 | Police alert on crack attempt | ❌ | ✅ |
 | Passcode hashing | ❌ | ✅ |
 | Rate limiting + cooldowns | ❌ | ✅ |
+| Auto-configure by model | ❌ | ✅ |
 | Price | 💸 Paid | ✅ Free forever |
 
 ---
@@ -77,7 +78,7 @@ No other prop system on the market does this natively for ox_core. **Free. Open.
 
 ### 🔓 Crack System
 - Three difficulties: Easy / Medium / Hard
-- ox_lib progressbar + skillcheck chain per difficulty
+- ox_lib progressbar + **minigame skillcheck** chain per difficulty
 - Per-prop, per-player cooldown (no spam)
 - **Police alert fires on crack attempt** — not just success
 - Auto-relock after configurable time (`Config.CrackRelockTime`)
@@ -86,14 +87,21 @@ No other prop system on the market does this natively for ox_core. **Free. Open.
 - Any prop becomes a crafting station
 - Global recipe sets per model (`Config.AutoCraftingModels`)
 - Per-prop custom recipe set override via admin menu
-- ox_lib progressbar + optional skillcheck per recipe
+- ox_lib progressbar + optional **minigame skillcheck** per recipe
 - Full input validation and item removal server-side
+
+### 🎮 Minigame Skillchecks
+- Integrated ox_lib skillCheck with WASD key inputs
+- Three difficulty profiles with customizable area sizes and speed multipliers
+- Crack attempts and crafting can both require skillchecks
+- Fail = cooldown, no item loss exploit possible
 
 ### 🛡️ Security
 - Server-side distance check on all stash/craft interactions
 - Rate limiting on configure, craft, and crack events
 - Passcode hashed client-side before transmission
 - No exploitable client-authoritative actions
+- Admin check: ox_core groups + ace permissions + hasPermission fallback
 
 ---
 
@@ -101,10 +109,11 @@ No other prop system on the market does this natively for ox_core. **Free. Open.
 
 rde_props_interact hooks into rde_props **without modifying a single line** of its code:
 
-1. Listens to `AddStateBagChangeHandler('rde_prop:', ...)` — when rde_props spawns a prop, the addon detects it
+1. Listens to `AddStateBagChangeHandler('rde_prop_', ...)` — when rde_props spawns/updates a prop, the addon detects it
 2. Checks if that prop has interact data in its own DB table (`rde_props_interact`)
-3. If yes → attaches ox_target zones with the appropriate options (open stash / crack / craft / configure)
-4. All state is synced via GlobalState StateBags separately from rde_props
+3. If yes → attaches options via `ox_target:addLocalEntity` directly to the **same entity** — options appear in the same ox_target menu alongside rde_props' own options (Info, Delete, etc.)
+4. Auto-configure: if the prop model matches `Config.AutoStashModels` or `Config.AutoCraftingModels`, the prop is automatically configured on placement
+5. All interact state is synced via GlobalState StateBags separately from rde_props
 
 This means rde_props_interact is **fully optional** — remove it and rde_props runs exactly as before.
 
@@ -160,7 +169,7 @@ Edit `config.lua` to set your auto-models, recipe sets, lock defaults, and polic
 restart rde_props_interact
 ```
 
-Then place a prop with `/props`, look at it, and use ox_target — you'll see the ⚙️ Configure option if you're an admin.
+Then place a prop with `/props`, look at it, and use ox_target — you'll see the ⚙️ Configure Interaction option if you're an admin, or ⚗️ Crafting / 📦 Open Stash if the prop is auto-configured.
 
 ---
 
@@ -177,9 +186,17 @@ Config.CrackPoliceJob   = 'police'
 Config.CrackRelockTime  = 300000             -- 5 minutes after crack
 ```
 
+### Important: StateBag Prefix
+
+```lua
+-- MUST match rde_props config.lua → Config.StatebagPrefix
+-- rde_props uses 'rde_prop_' (underscore!)
+Config.PropsStatebagPrefix = 'rde_prop_'
+```
+
 ### Admin Groups
 
-Must match your `rde_props` config:
+Must match your `rde_props` config. Additionally supports ace permissions as fallback:
 
 ```lua
 Config.AdminGroups = {
@@ -188,6 +205,8 @@ Config.AdminGroups = {
     ['moderator']  = true,
     ['owner']      = true,
 }
+
+Config.AdminAce = 'command'  -- FiveM ace permission fallback (set false to disable)
 ```
 
 ### Auto-Stash Models
@@ -242,7 +261,7 @@ Config.RecipeSets = {
 ### How stashes work
 
 1. Admin places a prop with `/props`
-2. Looks at prop → ox_target → **⚙️ Configure Prop** → **📦 Set as Stash**
+2. Looks at prop → ox_target → **⚙️ Configure Interaction** → **📦 Set as Stash**
 3. Fills in label, slots, weight, lock type, crack difficulty
 4. Stash is registered with ox_inventory as `rde_prop_{propId}`
 5. Other players see **📦 Open Stash** option (if unlocked) or **🔓 Crack** / **🔑 Enter Passcode**
@@ -259,11 +278,11 @@ Config.RecipeSets = {
 
 ### How crafting works
 
-1. Admin places a prop
+1. Admin places a prop (or it auto-configures based on model)
 2. Configures it as a crafting station → selects recipe set
 3. Players see **⚗️ [Station Name]** in ox_target
 4. Menu shows all available recipes with input/output preview
-5. Player selects recipe → progressbar → optional skillcheck → items exchanged server-side
+5. Player selects recipe → progressbar → optional minigame skillcheck → items exchanged server-side
 
 ### Adding custom recipes
 
@@ -285,7 +304,7 @@ Config.RecipeSets['my_workbench'] = {
 }
 ```
 
-Then assign it to a model or select it manually in the admin configure menu.
+Then assign it to a model in `Config.AutoCraftingModels` or select it manually in the admin configure menu.
 
 ---
 
@@ -303,7 +322,7 @@ Then assign it to a model or select it manually in the admin configure menu.
 
 ### Crack difficulties
 
-| Difficulty | Progressbar | Skillchecks | Cooldown after fail |
+| Difficulty | Progressbar | Minigame Skillchecks | Cooldown after fail |
 |---|---|---|---|
 | Easy | 5s | 1 check (large zone) | 15s |
 | Medium | 10s | 2 checks | 15s |
@@ -311,20 +330,20 @@ Then assign it to a model or select it manually in the admin configure menu.
 
 ### Police alert
 
-When `Config.CrackPoliceAlert = true`, all online players with `Config.CrackPoliceJob` receive a notification on crack **attempt** — including the coordinates. Adjust the alert display in `client/main.lua` to match your dispatch system (ps-dispatch, ox_lib dispatch, etc.).
+When `Config.CrackPoliceAlert = true`, all online players with `Config.CrackPoliceJob` receive a notification on crack **attempt** — including the coordinates. Adapt the alert handler in `client/main.lua` to match your dispatch system (ps-dispatch, ox_lib dispatch, etc.).
 
 ---
 
 ## 🛡️ Admin System
 
-Admins (as defined in `Config.AdminGroups`) can:
+Admins (detected via ox_core groups, ace permissions, or `hasPermission`) can:
 
-- See **⚙️ Configure Prop** on any placed prop
+- See **⚙️ Configure Interaction** on any placed prop
 - Set prop as Stash or Crafting Station
 - Remove interact configuration
 - Bypass all lock restrictions when opening stashes
 
-Admin groups must match the groups in your `rde_props` config.
+Admin detection mirrors `rde_props` exactly: ace permissions → `hasPermission('admin')` → `getGroups()` check.
 
 ---
 
@@ -348,6 +367,13 @@ end)
 -- Fires when interact data is removed for a prop
 AddEventHandler('rde_interact:remove', function(propId)
 end)
+```
+
+### Server Callback
+
+```lua
+-- Check if a player is admin (from client)
+local isAdmin = lib.callback.await('rde_interact:isAdmin', false)
 ```
 
 ### GlobalState Keys
@@ -380,7 +406,7 @@ CREATE TABLE IF NOT EXISTS `rde_props_interact` (
 ## 🐛 Troubleshooting
 
 **Target options not showing on props?**  
-Ensure `rde_props_interact` starts after `rde_props`. Check F8 console for StateBag errors. Enable `Config.Debug = true` for verbose logging.
+Ensure `rde_props_interact` starts after `rde_props` in your `server.cfg`. Check F8 console for version output — must show `v1.0.5`. Enable `Config.Debug = true` for verbose logging. Verify `Config.PropsStatebagPrefix` matches your rde_props `Config.StatebagPrefix` (default: `'rde_prop_'` with underscore).
 
 **Stash opens but is empty after restart?**  
 Stash content is stored by ox_inventory. Ensure ox_inventory is running and the stash ID (`rde_prop_{propId}`) matches. Run `/reloadprops` in rde_props to re-register stashes.
@@ -389,24 +415,41 @@ Stash content is stored by ox_inventory. Ensure ox_inventory is running and the 
 Check `Config.CrackPoliceJob` matches your ox_core job name exactly. Verify the officer has the correct job assigned. Adapt the alert handler in `client/main.lua` for your dispatch system.
 
 **Passcode always says wrong?**  
-Passcode is hashed on the client before sending. If you set a passcode before v1.0.1, it was stored plaintext — delete and re-configure the prop to reset.
+Passcode is hashed on the client before sending. If you set a passcode before v1.0.5, it may have been double-hashed — delete and re-configure the prop to reset.
 
-**Entity not found / target zone missing on dense props?**  
-The 3-stage retry covers most cases. If a specific prop model causes issues, increase the search radius in the Stage 3 fallback in `client/main.lua` (`dist < 2.0`).
+**Configure option not showing (admin)?**  
+Admin detection uses ace permissions, `hasPermission`, and ox_core groups. Check your `server.cfg` for `add_ace` and your ox_core group assignments. Set `Config.AdminAce = 'command'` to use FiveM's default ace.
+
+**Entity not found / interact options missing on dense props?**  
+The 3-stage entity retry covers most cases. If a specific prop model causes issues, increase the search radius in the Stage 3 fallback in `client/main.lua` (`dist < 3.0`).
 
 ---
 
 ## 📝 Changelog
 
-### v1.0.1 — Current
+### v1.0.5 — Current
+- ✅ **ROOT FIX:** StateBag prefix corrected from `rde_prop:` to `rde_prop_` (underscore) — matches rde_props
+- ✅ **ROOT FIX:** Switched from `addBoxZone` to `addLocalEntity` — interact options now appear in the **same ox_target menu** as rde_props options
+- ✅ `@ox_core/lib/init.lua` in shared_scripts — identical to rde_props fxmanifest
+- ✅ Admin detection matches rde_props exactly: ace → hasPermission → getGroups
+- ✅ Auto-configure props based on model (`Config.AutoStashModels` / `Config.AutoCraftingModels`)
+- ✅ `lib.callback` for server-authoritative admin check
+- ✅ Zone refresh after first configure (immediate feedback)
+- ✅ Minigame skillchecks working for both crack and crafting
+
+### v1.0.4
+- ✅ Removed `@ox_core/imports.lua` (file doesn't exist)
+- ✅ `require '@ox_core.lib.init'` as alternative import method
+- ✅ Ace permission fallback for admin detection
+- ✅ Auto-configure system (first implementation)
+
+### v1.0.1
 - ✅ 3-stage entity-finding retry (1.5m → 3.0m → GamePool filter)
 - ✅ Passcode hashed client-side + stored hashed in DB
-- ✅ Crack cooldown system — per-prop, per-player, actually implemented
+- ✅ Crack cooldown system — per-prop, per-player
 - ✅ Server-side distance check on openStash, passcode, craft
 - ✅ Police alert fires on crack ATTEMPT, not just success
 - ✅ Rate limiting on configure / craft / crack events
-- ✅ `crackFailed` event sent to server on cancel and skillcheck fail
-- ✅ `RDE_INTERACT.COOLDOWN` table in shared/types.lua
 
 ### v1.0.0 — Initial release
 - Stash system with Owner/Job/Group/Passcode locks
@@ -436,7 +479,7 @@ Guidelines: follow existing Lua style, comment non-obvious logic, test on a live
 #                                                                                 #
 #      .:: RED DRAGON ELITE (RDE)  -  BLACK FLAG SOURCE LICENSE v6.66 ::.         #
 #                                                                                 #
-#   PROJECT:    RDE_PROPS_INTERACT v1.0.1 (STASH & CRAFTING LAYER FOR FIVEM)      #
+#   PROJECT:    RDE_PROPS_INTERACT v1.0.5 (STASH & CRAFTING LAYER FOR FIVEM)      #
 #   ARCHITECT:  .:: RDE ⧌ Shin [△ ᛋᛅᚱᛒᛅᚾᛏᛋ ᛒᛁᛏᛅ ▽] ::. | https://rd-elite.com     #
 #   ORIGIN:     https://github.com/RedDragonElite                                 #
 #                                                                                 #
